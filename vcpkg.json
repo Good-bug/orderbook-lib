@@ -1,0 +1,7 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "feedhandler-lib",
+  "version-string": "0.1.0",
+  "dependencies": ["boost-asio", "boost-beast", "openssl", "glaze", "catch2", "quill"],
+  "builtin-baseline": "cfdd905d97feb5d8061849ca8cc5cafce7bbdd7d"
+}
