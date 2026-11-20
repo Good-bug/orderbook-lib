@@ -51,9 +51,13 @@ include(CTest)
 if(BUILD_TESTING)
     find_package(Catch2 CONFIG QUIET)
     if(TARGET Catch2::Catch2WithMain)
-        add_executable(binance_convert_test tests/binance_convert_test.cpp)
-        target_link_libraries(binance_convert_test PRIVATE orderbook_lib Catch2::Catch2WithMain)
-        target_compile_options(binance_convert_test PRIVATE -Wall -Wextra -Wpedantic)
-        add_test(NAME binance_convert_test COMMAND binance_convert_test)
+        add_executable(orderbook_tests
+            tests/binance_convert_test.cpp
+            tests/naive_book_test.cpp
+            tests/book_synchronizer_test.cpp
+        )
+        target_link_libraries(orderbook_tests PRIVATE orderbook_lib Catch2::Catch2WithMain)
+        target_compile_options(orderbook_tests PRIVATE -Wall -Wextra -Wpedantic)
+        add_test(NAME orderbook_tests COMMAND orderbook_tests)
     endif()
 endif()

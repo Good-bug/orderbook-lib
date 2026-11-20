@@ -2,124 +2,120 @@
 
 #include <memory>
 #include <thread>
-#include <utility>
 #include <variant>
 #include <vector>
 
+#include "quill/LogMacros.h"
+#include "quill/SimpleSetup.h"
+#include "orderbook/books/naive_book.hpp"
 #include "rest/binance_rest_depth_client.hpp"
 
 namespace ob::orderbook {
+namespace {
 
-OrderBook::OrderBook() = default;
+quill::Logger* orderbookLogger() {
+    static auto* logger = quill::simple_logger("orderbook.log");
+    logger->set_log_level(quill::LogLevel::Debug);
+    return logger;
+}
 
-OrderBook::~OrderBook() = default;
+}  // namespace
 
-void OrderBook::onDepthUpdate(const domain::DepthUpdate& update) {
+template <class T>
+OrderBook<T>::OrderBook() : sync_(orderbookLogger()) {
+    LOG_INFO(orderbookLogger(), "Order book initialized");
+}
+
+template <class T>
+OrderBook<T>::~OrderBook() = default;
+
+template <class T>
+void OrderBook<T>::onDepthUpdate(const domain::DepthUpdate& update) {
     events_q.push(update);
 }
 
-void OrderBook::statusUpdate(const observer::ListenerStatus& status) {
+template <class T>
+void OrderBook<T>::statusUpdate(const observer::ListenerStatus& status) {
     switch (status) {
         case observer::ListenerStatus::Running: {
+            LOG_INFO(orderbookLogger(), "Binance listener is running");
             requestSnapshot();
             break;
         }
 
         case observer::ListenerStatus::Connected:
+            LOG_INFO(orderbookLogger(), "Binance listener connected");
+            break;
         case observer::ListenerStatus::Disconnected:
+            LOG_WARNING(orderbookLogger(), "Binance listener disconnected");
+            break;
         case observer::ListenerStatus::Stopped:
+            LOG_INFO(orderbookLogger(), "Binance listener stopped");
+            break;
         case observer::ListenerStatus::Error:
+            LOG_ERROR(orderbookLogger(), "Binance listener reported an error");
             break;
     }
 }
 
-void OrderBook::start() {
+template <class T>
+void OrderBook<T>::start() {
+    LOG_INFO(orderbookLogger(), "Starting order book");
     status = OrderBookStatus::Initiating;
+    requestSnapshot();
     _worker = std::jthread([this](const std::stop_token& st) { run(st); });
 }
 
-std::shared_ptr<const BookView> OrderBook::view() const { return view_.load(); }
+template <class T>
+std::shared_ptr<const BookView> OrderBook<T>::view() const {
+    return view_.load();
+}
 
-void OrderBook::requestSnapshot() {
+template <class T>
+void OrderBook<T>::requestSnapshot() {
+    LOG_INFO(orderbookLogger(), "Requesting Binance depth snapshot for btcusdt");
     std::thread([this] {
         rest::BinanceRestDepthClient restClient;
         events_q.push(restClient.fetch_snapshot("btcusdt", 100));
     }).detach();
 }
 
-void OrderBook::run(const std::stop_token& st) {
+template <class T>
+void OrderBook<T>::run(const std::stop_token& st) {
     std::vector<Event> e;
     while (events_q.drain(e, st)) {
         for (auto& ev : e) {
-            std::visit([this](auto& event_item) { handle(event_item); }, ev);
+            Action a = std::visit(
+                [this](auto& event_item) { return this->handle(event_item); }, ev);
+
+            if (a == Action::RequestSnapshot) {
+                requestSnapshot();
+            }
+            publish();
         }
     }
 }
 
-void OrderBook::applyLevels(const domain::DepthSnapshot& snapshot) {
-    domain::applyLevels(bids, snapshot.bids);
-    domain::applyLevels(asks, snapshot.asks);
-    last_update_id = snapshot.last_update_id;
+template <class T>
+Action OrderBook<T>::handle(const domain::DepthUpdate& update) {
+    return sync_.onUpdate(update);
 }
 
-void OrderBook::handle(const domain::DepthUpdate& update) {
-    if (status == OrderBookStatus::Initiating) {
-        _buffer.push(update);
-        return;
+template <class T>
+Action OrderBook<T>::handle(const domain::DepthSnapshot& snapshot) {
+    const auto action = sync_.onSnapshot(snapshot);
+    if (action == Action::None) {
+        LOG_INFO(orderbookLogger(), "Order book synchronized at update {}",
+                 snapshot.last_update_id.value);
     }
-
-    if (update.first_update_id.value != last_update_id.value + 1) {
-        handle(ResetEvent{});
-        return;
-    }
-
-    applyLevels(update);
-    publish();
+    return action;
 }
 
-void OrderBook::handle(const domain::DepthSnapshot& snapshot) {
-    bids.clear();
-    asks.clear();
-    applyLevels(snapshot);
-
-    while (!_buffer.empty() &&
-           last_update_id >= _buffer.front().last_update_id) {
-        _buffer.pop();
-    }
-
-    if (!_buffer.empty() &&
-        last_update_id.value + 1 != _buffer.front().first_update_id.value) {
-        handle(ResetEvent{});
-        return;
-    }
-
-    while (!_buffer.empty()) {
-        applyLevels(_buffer.front());
-        _buffer.pop();
-    }
-
-    publish();
-    status = OrderBookStatus::Running;
-}
-
-void OrderBook::handle(const ResetEvent&) {
-    status = OrderBookStatus::Initiating;
-    _buffer = {};
-    requestSnapshot();
-}
-
-void OrderBook::publish(std::size_t depth) {
-    auto v = std::make_shared<BookView>();
-    v->last_update_id = last_update_id;
-    for (auto it = bids.begin(); it != bids.end() && v->bids.size() < depth;
-         ++it) {
-        v->bids.push_back({.price = it->first, .qty = it->second});
-    }
-    for (auto it = asks.begin(); it != asks.end() && v->asks.size() < depth;
-         ++it) {
-        v->asks.push_back({.price = it->first, .qty = it->second});
-    }
-    view_.store(std::move(v));
+template <class T>
+void OrderBook<T>::publish(std::size_t depth) {
+    view_.store(sync_.book().getBookView(depth));
 }
 
 }  // namespace ob::orderbook
+
+template class ob::orderbook::OrderBook<ob::orderbook::NaiveBook>;

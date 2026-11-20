@@ -1,20 +1,52 @@
-# feedhandler_lib
+# orderbook_lib
 
-Core C++23 library for Binance market data feed handling and order book maintenance.
+Core C++23 library for Binance market-data handling and order-book
+maintenance. The library target is `orderbook::lib`.
 
 ## Components
 
-- **`domain`** (`include/domain/`): Exchange-independent domain types (`Price`, `Qty`, `Level`, `DepthUpdate`, `DepthSnapshot`). Fixed-point 128-bit arithmetic (`kScaleFactor = 100,000,000`).
-- **`protocol`** (`include/protocol/`): Binance JSON DTOs and strict converters to domain models.
-- **`gateway`** (`include/gateway/`, `src/gateway/`): WebSocket listener service connecting to Binance market streams with observer pattern for subscribers.
-- **`orderbook`** (`include/orderbook/`, `src/orderbook/`): Order book depth tracking and view generation.
+- **`domain`** (`include/domain/`): Exchange-independent types such as
+  `Price`, `Qty`, `Level`, `DepthUpdate`, and `DepthSnapshot`. Prices and
+  quantities use signed 128-bit fixed-point values with a scale factor of
+  `100,000,000`.
+- **`protocol`** (`include/protocol/`): Binance JSON DTOs and converters that
+  validate wire data before producing domain types.
+- **`gateway`** (`include/gateway/`, `src/gateway/`): Binance WebSocket
+  listener and observer notifications.
 - **`rest`** (`include/rest/`): REST client for fetching depth snapshots.
+- **`orderbook`** (`include/orderbook/`, `src/orderbook/`): `NaiveBook`
+  maintains sorted bid/ask levels and provides depth-limited views.
+  `BookSynchronizer` buffers stream updates while waiting for a snapshot,
+  discards updates covered by the snapshot, replays contiguous updates, and
+  requests a new snapshot when it detects a sequence gap.
+  `OrderBook` connects synchronization to the listener and publishes views
+  for consumers.
 - **`writer`** (`include/writer/`): Asynchronous CSV writer for depth updates.
 
-## Standalone Build
+## Build and test
+
+The standalone build uses the repository's vcpkg manifest. Install CMake 3.25+,
+Ninja (optional), a C++23 compiler (GCC 14+ recommended), and vcpkg, then set
+`VCPKG_ROOT` to the vcpkg installation directory.
+
+From this directory:
 
 ```bash
-cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+cmake -S . -B build \
+  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+  -DBUILD_TESTING=ON
 cmake --build build
-ctest --test-dir build
+ctest --test-dir build --output-on-failure
 ```
+
+All unit-test source files are compiled into the `orderbook_tests` executable.
+To build or run only that target:
+
+```bash
+cmake --build build --target orderbook_tests
+./build/orderbook_tests
+```
+
+The tests cover Binance DTO conversion, `NaiveBook` level updates and views,
+and `BookSynchronizer` buffering, snapshot replay, and sequence-gap handling.
+Catch2 must be available through vcpkg for the test target to be generated.

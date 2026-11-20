@@ -4,18 +4,16 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <mutex>
-#include <queue>
 #include <stop_token>
 #include <thread>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "domain/types.hpp"
 #include "gateway/binance_listener_service.hpp"
+#include "book_synchronizer.hpp"
 
 namespace ob::orderbook {
 
@@ -45,25 +43,18 @@ class EventQueue {
     std::vector<T> events;
 };
 
-struct ResetEvent {};
+// struct ResetEvent {};
 
 enum class OrderBookStatus : std::uint8_t {
     Running,
     Initiating,  // wait Snapshot && Buffering
-    // Sync,
     Stop
 };
 
-struct BookView {
-    std::vector<domain::Level> bids;  // Sorted from best price.
-    std::vector<domain::Level> asks;
-    domain::SeqId last_update_id{0};
-    // InstrumentSpec spec;          // So consumers know the scale.
-};
-
 using Event =
-    std::variant<domain::DepthUpdate, domain::DepthSnapshot, ResetEvent>;
+    std::variant<domain::DepthUpdate, domain::DepthSnapshot/*, ResetEvent*/>;
 
+template <class Book>
 class OrderBook : public observer::DepthUpdateObserver {
    public:
     OrderBook();
@@ -79,21 +70,16 @@ class OrderBook : public observer::DepthUpdateObserver {
    private:
     void requestSnapshot();
     void run(const std::stop_token& st);
-    void applyLevels(const domain::DepthSnapshot& snapshot);
 
-    void handle(const domain::DepthUpdate& update);
-    void handle(const domain::DepthSnapshot& snapshot);
-    void handle(const ResetEvent&);
-    
+    Action handle(const domain::DepthUpdate& update);
+    Action handle(const domain::DepthSnapshot& snapshot);
+
+
     void publish(std::size_t depth = 20);
 
+    BookSynchronizer<Book> sync_;
+
     std::atomic<OrderBookStatus> status = OrderBookStatus::Stop;
-    std::queue<domain::DepthUpdate> _buffer;
-
-    domain::SeqId last_update_id{0};
-
-    std::map<domain::Price, domain::Qty, std::greater<>> bids;
-    std::map<domain::Price, domain::Qty> asks;
 
     // TODO: upgrade to lock free
     std::atomic<std::shared_ptr<const BookView>> view_;
