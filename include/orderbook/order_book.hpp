@@ -10,10 +10,12 @@
 #include <thread>
 #include <utility>
 #include <variant>
+#include <vector>
 
+#include "book_synchronizer.hpp"
 #include "domain/types.hpp"
 #include "gateway/binance_listener_service.hpp"
-#include "book_synchronizer.hpp"
+#include "orderbook/books/book_concept.hpp"
 
 namespace ob::orderbook {
 
@@ -43,7 +45,8 @@ class EventQueue {
     std::vector<T> events;
 };
 
-// struct ResetEvent {};
+struct StreamStarted {};  // a snapshot can be requested.
+struct StreamLost {};     // Connection lost.
 
 enum class OrderBookStatus : std::uint8_t {
     Running,
@@ -51,10 +54,10 @@ enum class OrderBookStatus : std::uint8_t {
     Stop
 };
 
-using Event =
-    std::variant<domain::DepthUpdate, domain::DepthSnapshot/*, ResetEvent*/>;
+using Event = std::variant<domain::DepthUpdate, domain::DepthSnapshot,
+                           StreamStarted, StreamLost>;
 
-template <class Book>
+template <BookLike Book>
 class OrderBook : public observer::DepthUpdateObserver {
    public:
     OrderBook();
@@ -73,19 +76,25 @@ class OrderBook : public observer::DepthUpdateObserver {
 
     Action handle(const domain::DepthUpdate& update);
     Action handle(const domain::DepthSnapshot& snapshot);
-
+    Action handle(const StreamStarted&);
+    Action handle(const StreamLost&);
 
     void publish(std::size_t depth = 20);
 
     BookSynchronizer<Book> sync_;
 
+    bool snapshot_inflight_{false};
     std::atomic<OrderBookStatus> status = OrderBookStatus::Stop;
 
     // TODO: upgrade to lock free
     std::atomic<std::shared_ptr<const BookView>> view_;
 
+    std::mutex snapshot_m_;
+    std::atomic<bool> snapshot_busy_{false};
+
     EventQueue<Event> events_q;
-    std::jthread _worker;
+    std::jthread worker_;
+    std::jthread snapshot_thread_;
 };
 
 }  // namespace ob::orderbook

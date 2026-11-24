@@ -1,12 +1,12 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+
 #include "domain/types.hpp"
 
 namespace ob::orderbook {
-enum class State : std::uint8_t { WaitingSnapshot, Live };
+enum class State : std::uint8_t { WaitingSnapshot, Live, Disconnected };
 enum class Action : std::uint8_t { None, RequestSnapshot };
-
 
 struct BookView {
     std::vector<domain::Level> bids;  // Sorted from best price.

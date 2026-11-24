@@ -10,7 +10,6 @@
 #include <cctype>
 // #include <format>
 #include <glaze/glaze.hpp>
-
 #include <stdexcept>
 #include <string>
 // #include <string_view>
@@ -19,7 +18,6 @@
 #include "domain/types.hpp"
 #include "protocol/binance_convert.hpp"
 #include "protocol/binance_dto.hpp"
-
 
 namespace ob::rest {
 
@@ -31,11 +29,14 @@ using tcp = net::ip::tcp;
 
 class BinanceRestDepthClient {
    public:
-    explicit BinanceRestDepthClient(std::string host = "data-api.binance.vision",
-                                   std::string_view scheme = "https",
-                                   unsigned short port = 443)
+    explicit BinanceRestDepthClient(
+        std::string host = "data-api.binance.vision",
+        std::string_view scheme = "https", unsigned short port = 443)
         : host_(std::move(host)), scheme_(scheme), port_(port) {}
 
+    // Over time, the (order) book may extend beyond the scope of a snapshot, so
+    // it is necessary to either take a full snapshot or perform frequent
+    // updates.
     [[nodiscard]] domain::DepthSnapshot fetch_snapshot(
         const std::string& symbol, std::size_t limit = 100) const {
         if (symbol.empty()) {
@@ -49,10 +50,10 @@ class BinanceRestDepthClient {
         static constexpr std::string_view kPath = "/api/v3/depth";
 
         std::string normalized_symbol = symbol;
-        std::ranges::transform(normalized_symbol,
-                       normalized_symbol.begin(), [](unsigned char ch) {
-                           return static_cast<char>(std::toupper(ch));
-                       });
+        std::ranges::transform(normalized_symbol, normalized_symbol.begin(),
+                               [](unsigned char ch) {
+                                   return static_cast<char>(std::toupper(ch));
+                               });
 
         net::io_context ioc;
         ssl::context ctx{ssl::context::tls_client};
@@ -64,16 +65,14 @@ class BinanceRestDepthClient {
         net::connect(stream.next_layer(), endpoints);
 
         if (!SSL_set_tlsext_host_name(stream.native_handle(), host_.c_str())) {
-            throw std::runtime_error("Failed to set SNI hostname for Binance REST client");
+            throw std::runtime_error(
+                "Failed to set SNI hostname for Binance REST client");
         }
 
         stream.handshake(ssl::stream_base::client);
 
-        const std::string target = std::format(
-            "{}?symbol={}&limit={}",
-            kPath,
-            normalized_symbol,
-            limit);
+        const std::string target = std::format("{}?symbol={}&limit={}", kPath,
+                                               normalized_symbol, limit);
 
         http::request<http::string_body> req{http::verb::get, target, 11};
         req.set(http::field::host, host_);
@@ -89,8 +88,7 @@ class BinanceRestDepthClient {
         if (res.result() != http::status::ok) {
             throw std::runtime_error(
                 std::format("Binance REST depth request failed: {} {}",
-                            static_cast<int>(res.result()),
-                            res.reason()));
+                            static_cast<int>(res.result()), res.reason()));
         }
 
         constexpr glz::opts opts{.error_on_unknown_keys = false};
@@ -99,7 +97,8 @@ class BinanceRestDepthClient {
         const auto parse_status = glz::read<opts>(snapshot, res.body());
         if (parse_status) {
             throw std::runtime_error(
-                std::format("Failed to parse Binance depth snapshot: {}", glz::format_error(parse_status, res.body())));
+                std::format("Failed to parse Binance depth snapshot: {}",
+                            glz::format_error(parse_status, res.body())));
         }
 
         auto domain_snapshot = convert::to_domain(snapshot, 8);

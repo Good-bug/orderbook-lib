@@ -25,28 +25,43 @@ maintenance. The library target is `orderbook::lib`.
 
 ## Build and test
 
-The standalone build uses the repository's vcpkg manifest. Install CMake 3.25+,
-Ninja (optional), a C++23 compiler (GCC 14+ recommended), and vcpkg, then set
-`VCPKG_ROOT` to the vcpkg installation directory.
+The standalone build uses the vcpkg manifest and CMake presets in this
+directory. Install CMake 3.25+, Ninja, GCC 14, and vcpkg, then set `VCPKG_ROOT`
+to the vcpkg installation directory.
 
-From this directory:
+From this directory, configure, build, and run tests with the Debug preset:
 
 ```bash
-cmake -S . -B build \
-  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-  -DBUILD_TESTING=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake --preset debug
+cmake --build --preset debug --parallel
+ctest --preset debug
 ```
 
 All unit-test source files are compiled into the `orderbook_tests` executable.
 To build or run only that target:
 
 ```bash
-cmake --build build --target orderbook_tests
-./build/orderbook_tests
+cmake --build --preset debug --target orderbook_tests --parallel
+./build/debug/orderbook_tests
+```
+
+Catch2 test tags can be used to run a subset of the suite, for example:
+
+```bash
+./build/debug/orderbook_tests "[book_synchronizer]"
+```
+
+The `asan` preset enables AddressSanitizer and UndefinedBehaviorSanitizer, and
+`release` configures an optimized build. Configure, build, and test either
+preset by substituting its name for `debug`:
+
+```bash
+cmake --preset asan
+cmake --build --preset asan --parallel
+ctest --preset asan
 ```
 
 The tests cover Binance DTO conversion, `NaiveBook` level updates and views,
 and `BookSynchronizer` buffering, snapshot replay, and sequence-gap handling.
-Catch2 must be available through vcpkg for the test target to be generated.
+The `orderbook_tests` target is generated when Catch2 is available through
+vcpkg.
