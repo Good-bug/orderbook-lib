@@ -64,7 +64,7 @@ class OrderBook : public observer::DepthUpdateObserver {
     ~OrderBook() override;
 
     void onDepthUpdate(const domain::DepthUpdate& update) override;
-    void statusUpdate(const observer::ListenerStatus& status) override;
+    void statusUpdate(const observer::ListenerStatusEvent& event) override;
 
     void start();
 

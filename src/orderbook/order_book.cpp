@@ -35,8 +35,8 @@ void OrderBook<Book>::onDepthUpdate(const domain::DepthUpdate& update) {
 }
 
 template <BookLike Book>
-void OrderBook<Book>::statusUpdate(const observer::ListenerStatus& status) {
-    switch (status) {
+void OrderBook<Book>::statusUpdate(const observer::ListenerStatusEvent& event) {
+    switch (event.status) {
         case observer::ListenerStatus::Running: {
             LOG_INFO(orderbookLogger(), "Binance listener is running");
             events_q.push(StreamStarted{});
@@ -62,7 +62,6 @@ template <BookLike Book>
 void OrderBook<Book>::start() {
     LOG_INFO(orderbookLogger(), "Starting order book");
     status = OrderBookStatus::Initiating;
-    requestSnapshot();
     worker_ = std::jthread([this](const std::stop_token& st) { run(st); });
 }
 

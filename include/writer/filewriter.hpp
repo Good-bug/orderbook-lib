@@ -117,7 +117,7 @@ class AsyncDepthUpdateCsvWriter : public observer::DepthUpdateObserver {
         write(update);
     }
 
-    void statusUpdate(const observer::ListenerStatus& status) override {
+    void statusUpdate(const observer::ListenerStatusEvent& event) override {
         // TODO
     }
 

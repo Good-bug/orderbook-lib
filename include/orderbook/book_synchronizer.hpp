@@ -119,6 +119,8 @@ class BookSynchronizer {
     Action reset(const std::string& error) {
         state_ = State::WaitingSnapshot;
         buffer_ = {};
+        book_.clean();
+
         LOG_WARNING(logger_,
                     "Order book synchronization lost; requesting a new "
                     "snapshot. Reset case: {}",
